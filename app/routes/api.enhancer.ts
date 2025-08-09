@@ -4,6 +4,7 @@ import { stripIndents } from '~/utils/stripIndent';
 import type { ProviderInfo } from '~/types/model';
 import { getApiKeysFromCookie, getProviderSettingsFromCookie } from '~/lib/api/cookies';
 import { createScopedLogger } from '~/utils/logger';
+import { getServerEnvironment } from '~/lib/utils/env';
 
 export async function action(args: ActionFunctionArgs) {
   return enhancerAction(args);
@@ -18,6 +19,9 @@ async function enhancerAction({ context, request }: ActionFunctionArgs) {
     provider: ProviderInfo;
     apiKeys?: Record<string, string>;
   }>();
+
+  // Get merged server environment for cross-platform compatibility
+  const serverEnv = getServerEnvironment(context);
 
   const { name: providerName } = provider;
 
@@ -77,7 +81,7 @@ async function enhancerAction({ context, request }: ActionFunctionArgs) {
           `,
         },
       ],
-      env: context.cloudflare?.env as any,
+      env: serverEnv as any,
       apiKeys,
       providerSettings,
       options: {
