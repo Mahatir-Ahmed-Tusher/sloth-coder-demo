@@ -293,18 +293,22 @@ async function chatAction({ context, request }: UniversalActionArgs) {
                 messageSliceId,
               });
 
-              result.mergeIntoDataStream(dataStream);
-
+              // Handle streaming errors in a non-blocking way
               (async () => {
-                for await (const part of result.fullStream) {
-                  if (part.type === 'error') {
-                    const error: any = part.error;
-                    logger.error(`${error}`);
-
-                    return;
+                try {
+                  for await (const part of result.fullStream) {
+                    if (part.type === 'error') {
+                      const error: any = part.error;
+                      logger.error('Continuation streaming error:', error);
+                      break;
+                    }
                   }
+                } catch (error) {
+                  logger.error('Error processing continuation stream:', error);
                 }
               })();
+
+              result.mergeIntoDataStream(dataStream);
 
               return;
             },
@@ -357,16 +361,21 @@ async function chatAction({ context, request }: UniversalActionArgs) {
             hasMergeIntoDataStream: typeof result?.mergeIntoDataStream === 'function',
           });
 
+          // Handle streaming errors in a non-blocking way
           (async () => {
-            for await (const part of result.fullStream) {
-              if (part.type === 'error') {
-                const error: any = part.error;
-                logger.error(`${error}`);
-
-                return;
+            try {
+              for await (const part of result.fullStream) {
+                if (part.type === 'error') {
+                  const error: any = part.error;
+                  logger.error('Streaming error:', error);
+                  break;
+                }
               }
+            } catch (error) {
+              logger.error('Error processing stream:', error);
             }
           })();
+
           result.mergeIntoDataStream(dataStream);
         } catch (executeError: any) {
           logger.error('Error in DataStream execute function:', executeError);
@@ -378,45 +387,85 @@ async function chatAction({ context, request }: UniversalActionArgs) {
             statusCode: executeError?.statusCode,
           });
 
-          // Re-throw with more context
-          throw new Error(`DataStream execution failed: ${executeError?.message || 'Unknown error'}`);
+          // Try to write error to dataStream before throwing
+          try {
+            dataStream.writeData({
+              type: 'progress',
+              label: 'response',
+              status: 'complete',
+              order: progressCounter++,
+              message: 'Response Generation Failed',
+            } satisfies ProgressAnnotation);
+          } catch (writeError) {
+            logger.error('Failed to write error status to dataStream:', writeError);
+          }
+
+          // Re-throw with more context but preserve the original error structure
+          if (executeError?.message?.includes('API key') || executeError?.statusCode === 401) {
+            throw new Error('Authentication failed: Invalid or missing API key');
+          } else if (executeError?.statusCode === 429) {
+            throw new Error('Rate limit exceeded: Please try again later');
+          } else {
+            throw new Error(`Response processing failed: ${executeError?.message || 'Unknown error'}`);
+          }
         }
       },
-      onError: (error: any) => `Custom error: ${error.message}`,
+      onError: (error: any) => {
+        logger.error('DataStream onError:', error);
+        // Return the original error message without the "Custom error:" prefix
+        // This helps with debugging and doesn't mask the real error
+        return error.message || 'An error occurred while processing the response';
+      },
     }).pipeThrough(
       new TransformStream({
         transform: (chunk, controller) => {
-          if (!lastChunk) {
-            lastChunk = ' ';
-          }
-
-          if (typeof chunk === 'string') {
-            if (chunk.startsWith('g') && !lastChunk.startsWith('g')) {
-              controller.enqueue(encoder.encode(`0: "<div class=\\"__boltThought__\\">"\n`));
+          try {
+            if (!lastChunk) {
+              lastChunk = ' ';
             }
 
-            if (lastChunk.startsWith('g') && !chunk.startsWith('g')) {
+            if (typeof chunk === 'string') {
+              if (chunk.startsWith('g') && !lastChunk.startsWith('g')) {
+                controller.enqueue(encoder.encode(`0: "<div class=\\"__boltThought__\\">"\n`));
+              }
+
+              if (lastChunk.startsWith('g') && !chunk.startsWith('g')) {
+                controller.enqueue(encoder.encode(`0: "</div>\\n"\n`));
+              }
+            }
+
+            lastChunk = chunk;
+
+            let transformedChunk = chunk;
+
+            if (typeof chunk === 'string' && chunk.startsWith('g')) {
+              let content = chunk.split(':').slice(1).join(':');
+
+              if (content.endsWith('\n')) {
+                content = content.slice(0, content.length - 1);
+              }
+
+              transformedChunk = `0:${content}\n`;
+            }
+
+            // Convert the string stream to a byte stream
+            const str = typeof transformedChunk === 'string' ? transformedChunk : JSON.stringify(transformedChunk);
+            controller.enqueue(encoder.encode(str));
+          } catch (transformError) {
+            logger.error('Transform stream error:', transformError);
+            // Re-throw to let the onError handler catch it
+            throw transformError;
+          }
+        },
+        flush: (controller) => {
+          try {
+            // Ensure we close any open thought divs
+            if (lastChunk && lastChunk.startsWith('g')) {
               controller.enqueue(encoder.encode(`0: "</div>\\n"\n`));
             }
+          } catch (flushError) {
+            logger.error('Transform stream flush error:', flushError);
           }
-
-          lastChunk = chunk;
-
-          let transformedChunk = chunk;
-
-          if (typeof chunk === 'string' && chunk.startsWith('g')) {
-            let content = chunk.split(':').slice(1).join(':');
-
-            if (content.endsWith('\n')) {
-              content = content.slice(0, content.length - 1);
-            }
-
-            transformedChunk = `0:${content}\n`;
-          }
-
-          // Convert the string stream to a byte stream
-          const str = typeof transformedChunk === 'string' ? transformedChunk : JSON.stringify(transformedChunk);
-          controller.enqueue(encoder.encode(str));
         },
       }),
     );
