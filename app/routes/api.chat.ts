@@ -1,4 +1,4 @@
-import { type ActionFunctionArgs } from '@remix-run/cloudflare';
+import { type UniversalActionArgs } from '~/lib/utils/universal-remix';
 import { createDataStream, generateId } from 'ai';
 import { MAX_RESPONSE_SEGMENTS, MAX_TOKENS, type FileMap } from '~/lib/.server/llm/constants';
 import { CONTINUE_PROMPT } from '~/lib/common/prompts/prompts';
@@ -13,10 +13,10 @@ import { createSummary } from '~/lib/.server/llm/create-summary';
 import { extractPropertiesFromMessage } from '~/lib/.server/llm/utils';
 import type { DesignScheme } from '~/types/design-scheme';
 import { MCPService } from '~/lib/services/mcpService';
-import { getServerEnvironment } from '~/lib/utils/env';
+import { getUniversalEnvironment } from '~/lib/utils/universal-remix';
 import { LLMManager } from '~/lib/modules/llm/manager';
 
-export async function action(args: ActionFunctionArgs) {
+export async function action(args: UniversalActionArgs) {
   return chatAction(args);
 }
 
@@ -40,7 +40,7 @@ function parseCookies(cookieHeader: string): Record<string, string> {
   return cookies;
 }
 
-async function chatAction({ context, request }: ActionFunctionArgs) {
+async function chatAction({ context, request }: UniversalActionArgs) {
   const { messages, files, promptId, contextOptimization, supabase, chatMode, designScheme, maxLLMSteps } =
     await request.json<{
       messages: Messages;
@@ -61,7 +61,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
     }>();
 
   // Get merged server environment for cross-platform compatibility
-  const serverEnv = getServerEnvironment(context);
+  const serverEnv = getUniversalEnvironment(context);
 
   const cookieHeader = request.headers.get('Cookie');
   const apiKeys = JSON.parse(parseCookies(cookieHeader || '').apiKeys || '{}');
@@ -395,7 +395,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
         errorType: error.constructor?.name,
         hasServerEnv: !!serverEnv,
         serverEnvKeys: Object.keys(serverEnv || {}),
-      }
+      },
     };
 
     if (error.message?.includes('API key')) {

@@ -1,4 +1,3 @@
-import { type ActionFunctionArgs } from '@remix-run/cloudflare';
 import { streamText } from '~/lib/.server/llm/stream-text';
 import type { IProviderSetting, ProviderInfo } from '~/types/model';
 import { generateText } from 'ai';
@@ -8,11 +7,13 @@ import { LLMManager } from '~/lib/modules/llm/manager';
 import type { ModelInfo } from '~/lib/modules/llm/types';
 import { getApiKeysFromCookie, getProviderSettingsFromCookie } from '~/lib/api/cookies';
 import { createScopedLogger } from '~/utils/logger';
-import { getServerEnvironment } from '~/lib/utils/env';
+import {
+  createUniversalRoute,
+  getUniversalEnvironment,
+  type UniversalActionArgs
+} from '~/lib/utils/universal-remix';
 
-export async function action(args: ActionFunctionArgs) {
-  return llmCallAction(args);
-}
+export const action = createUniversalRoute(llmCallAction);
 
 async function getModelList(options: {
   apiKeys?: Record<string, string>;
@@ -25,7 +26,7 @@ async function getModelList(options: {
 
 const logger = createScopedLogger('api.llmcall');
 
-async function llmCallAction({ context, request }: ActionFunctionArgs) {
+async function llmCallAction({ context, request }: UniversalActionArgs) {
   const { system, message, model, provider, streamOutput } = await request.json<{
     system: string;
     message: string;
@@ -35,7 +36,7 @@ async function llmCallAction({ context, request }: ActionFunctionArgs) {
   }>();
 
   // Get merged server environment for cross-platform compatibility
-  const serverEnv = getServerEnvironment(context);
+  const serverEnv = getUniversalEnvironment(context);
 
   const { name: providerName } = provider;
 
