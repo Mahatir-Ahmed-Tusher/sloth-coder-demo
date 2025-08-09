@@ -60,7 +60,7 @@ Instructions:
 5. If no perfect match exists, recommend the closest option
 
 Important: Provide only the selection tags in your response, no additional text.
-MOST IMPORTANT: YOU DONT HAVE TIME TO THINK JUST START RESPONDING BASED ON HUNCH 
+MOST IMPORTANT: YOU DONT HAVE TIME TO THINK JUST START RESPONDING BASED ON HUNCH
 `;
 
 const templates: Template[] = STARTER_TEMPLATES.filter((t) => !t.name.includes('shadcn'));
@@ -83,32 +83,49 @@ const parseSelectedTemplate = (llmOutput: string): { template: string; title: st
 };
 
 export const selectStarterTemplate = async (options: { message: string; model: string; provider: ProviderInfo }) => {
-  const { message, model, provider } = options;
-  const requestBody = {
-    message,
-    model,
-    provider,
-    system: starterTemplateSelectionPrompt(templates),
-  };
-  const response = await fetch('/api/llmcall', {
-    method: 'POST',
-    body: JSON.stringify(requestBody),
-  });
-  const respJson: { text: string } = await response.json();
-  console.log(respJson);
-
-  const { text } = respJson;
-  const selectedTemplate = parseSelectedTemplate(text);
-
-  if (selectedTemplate) {
-    return selectedTemplate;
-  } else {
-    console.log('No template selected, using blank template');
-
-    return {
-      template: 'blank',
-      title: '',
+  try {
+    const { message, model, provider } = options;
+    const requestBody = {
+      message,
+      model,
+      provider,
+      system: starterTemplateSelectionPrompt(templates),
     };
+
+    console.log('Calling /api/llmcall for template selection...');
+    const response = await fetch('/api/llmcall', {
+      method: 'POST',
+      body: JSON.stringify(requestBody),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Template selection API error:', response.status, errorText);
+      throw new Error(`Template selection failed: ${response.status} ${errorText}`);
+    }
+
+    const respJson: { text: string } = await response.json();
+    console.log('Template selection response:', respJson);
+
+    const { text } = respJson;
+    const selectedTemplate = parseSelectedTemplate(text);
+
+    if (selectedTemplate) {
+      console.log('Template selected successfully:', selectedTemplate);
+      return selectedTemplate;
+    } else {
+      console.log('No template selected, using blank template');
+      return {
+        template: 'blank',
+        title: '',
+      };
+    }
+  } catch (error) {
+    console.error('Error in selectStarterTemplate:', error);
+    throw new Error(`Template selection failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 };
 

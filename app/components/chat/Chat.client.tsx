@@ -446,11 +446,24 @@ export const ChatImpl = memo(
         setFakeLoading(true);
 
         if (autoSelectTemplate) {
-          const { template, title } = await selectStarterTemplate({
-            message: finalMessageContent,
-            model,
-            provider,
-          });
+          let template = 'blank';
+          let title = '';
+
+          try {
+            const templateResult = await selectStarterTemplate({
+              message: finalMessageContent,
+              model,
+              provider,
+            });
+            template = templateResult.template;
+            title = templateResult.title;
+          } catch (templateError) {
+            console.error('Error selecting starter template:', templateError);
+
+            // Fallback to blank template if template selection fails
+            template = 'blank';
+            title = '';
+          }
 
           if (template !== 'blank') {
             const temResp = await getTemplates(template, title).catch((e) => {
