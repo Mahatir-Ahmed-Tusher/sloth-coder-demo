@@ -14,6 +14,7 @@ import { extractPropertiesFromMessage } from '~/lib/.server/llm/utils';
 import type { DesignScheme } from '~/types/design-scheme';
 import { MCPService } from '~/lib/services/mcpService';
 import { getServerEnvironment } from '~/lib/utils/env';
+import { LLMManager } from '~/lib/modules/llm/manager';
 
 export async function action(args: ActionFunctionArgs) {
   return chatAction(args);
@@ -377,7 +378,12 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
       },
     });
   } catch (error: any) {
-    logger.error(error);
+    logger.error('Chat API error:', error);
+    logger.error('Error stack:', error?.stack);
+
+    // Log additional debugging information
+    logger.error('Server environment keys:', Object.keys(serverEnv));
+    logger.error('Has LLM Manager instance:', !!LLMManager);
 
     const errorResponse = {
       error: true,
@@ -385,6 +391,11 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
       statusCode: error.statusCode || 500,
       isRetryable: error.isRetryable !== false, // Default to retryable unless explicitly false
       provider: error.provider || 'unknown',
+      debug: {
+        errorType: error.constructor?.name,
+        hasServerEnv: !!serverEnv,
+        serverEnvKeys: Object.keys(serverEnv || {}),
+      }
     };
 
     if (error.message?.includes('API key')) {

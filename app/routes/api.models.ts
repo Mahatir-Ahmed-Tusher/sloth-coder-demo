@@ -52,42 +52,62 @@ export async function loader({
     };
   };
 }): Promise<Response> {
-  // Get merged server environment for cross-platform compatibility
-  const serverEnv = getServerEnvironment(context);
-  const llmManager = LLMManager.getInstance(serverEnv);
+  try {
+    // Get merged server environment for cross-platform compatibility
+    const serverEnv = getServerEnvironment(context);
+    const llmManager = LLMManager.getInstance(serverEnv);
 
-  // Get client side maintained API keys and provider settings from cookies
-  const cookieHeader = request.headers.get('Cookie');
-  const apiKeys = getApiKeysFromCookie(cookieHeader);
-  const providerSettings = getProviderSettingsFromCookie(cookieHeader);
+    // Get client side maintained API keys and provider settings from cookies
+    const cookieHeader = request.headers.get('Cookie');
+    const apiKeys = getApiKeysFromCookie(cookieHeader);
+    const providerSettings = getProviderSettingsFromCookie(cookieHeader);
 
-  const { providers, defaultProvider } = getProviderInfo(llmManager);
+    const { providers, defaultProvider } = getProviderInfo(llmManager);
 
-  let modelList: ModelInfo[] = [];
+    let modelList: ModelInfo[] = [];
 
-  if (params.provider) {
-    // Only update models for the specific provider
-    const provider = llmManager.getProvider(params.provider);
+    if (params.provider) {
+      // Only update models for the specific provider
+      const provider = llmManager.getProvider(params.provider);
 
-    if (provider) {
-      modelList = await llmManager.getModelListFromProvider(provider, {
+      if (provider) {
+        modelList = await llmManager.getModelListFromProvider(provider, {
+          apiKeys,
+          providerSettings,
+          serverEnv: serverEnv as any,
+        });
+      }
+    } else {
+      // Update all models
+      modelList = await llmManager.updateModelList({
         apiKeys,
         providerSettings,
         serverEnv: serverEnv as any,
       });
     }
-  } else {
-    // Update all models
-    modelList = await llmManager.updateModelList({
-      apiKeys,
-      providerSettings,
-      serverEnv: serverEnv as any,
-    });
-  }
 
-  return json<ModelsResponse>({
-    modelList,
-    providers,
-    defaultProvider,
-  });
+    return json<ModelsResponse>({
+      modelList,
+      providers,
+      defaultProvider,
+    });
+
+  } catch (error: unknown) {
+    console.error('Error in models API:', error);
+
+    // Always return valid JSON, even on errors
+    return json(
+      {
+        modelList: [],
+        providers: [],
+        defaultProvider: null,
+        error: 'Failed to load models',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      },
+      {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  }
 }
