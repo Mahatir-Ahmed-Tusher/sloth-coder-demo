@@ -63,6 +63,20 @@ async function chatAction({ context, request }: UniversalActionArgs) {
   // Get merged server environment for cross-platform compatibility
   const serverEnv = getUniversalEnvironment(context);
 
+  // Add comprehensive debugging for environment variables
+  logger.debug('Server environment keys:', Object.keys(serverEnv));
+  logger.debug('Has OPENAI_API_KEY:', !!serverEnv.OPENAI_API_KEY);
+  logger.debug('Has ANTHROPIC_API_KEY:', !!serverEnv.ANTHROPIC_API_KEY);
+  logger.debug(
+    'Process env keys:',
+    Object.keys(process.env).filter((k) => k.includes('API_KEY')),
+  );
+
+  // Verify LLMManager initialization
+  const llmManager = LLMManager.getInstance(serverEnv);
+  logger.debug('LLMManager initialized:', !!llmManager);
+  logger.debug('LLMManager providers count:', llmManager.getAllProviders().length);
+
   const cookieHeader = request.headers.get('Cookie');
   const apiKeys = JSON.parse(parseCookies(cookieHeader || '').apiKeys || '{}');
   const providerSettings: Record<string, IProviderSetting> = JSON.parse(
@@ -88,246 +102,285 @@ async function chatAction({ context, request }: UniversalActionArgs) {
 
     const dataStream = createDataStream({
       async execute(dataStream) {
-        const filePaths = getFilePaths(files || {});
-        let filteredFiles: FileMap | undefined = undefined;
-        let summary: string | undefined = undefined;
-        let messageSliceId = 0;
+        try {
+          const filePaths = getFilePaths(files || {});
+          let filteredFiles: FileMap | undefined = undefined;
+          let summary: string | undefined = undefined;
+          let messageSliceId = 0;
 
-        const processedMessages = await mcpService.processToolInvocations(messages, dataStream);
+          const processedMessages = await mcpService.processToolInvocations(messages, dataStream);
 
-        if (processedMessages.length > 3) {
-          messageSliceId = processedMessages.length - 3;
-        }
-
-        if (filePaths.length > 0 && contextOptimization) {
-          logger.debug('Generating Chat Summary');
-          dataStream.writeData({
-            type: 'progress',
-            label: 'summary',
-            status: 'in-progress',
-            order: progressCounter++,
-            message: 'Analysing Request',
-          } satisfies ProgressAnnotation);
-
-          // Create a summary of the chat
-          console.log(`Messages count: ${processedMessages.length}`);
-
-          summary = await createSummary({
-            messages: [...processedMessages],
-            env: serverEnv as any,
-            apiKeys,
-            providerSettings,
-            promptId,
-            contextOptimization,
-            onFinish(resp) {
-              if (resp.usage) {
-                logger.debug('createSummary token usage', JSON.stringify(resp.usage));
-                cumulativeUsage.completionTokens += resp.usage.completionTokens || 0;
-                cumulativeUsage.promptTokens += resp.usage.promptTokens || 0;
-                cumulativeUsage.totalTokens += resp.usage.totalTokens || 0;
-              }
-            },
-          });
-          dataStream.writeData({
-            type: 'progress',
-            label: 'summary',
-            status: 'complete',
-            order: progressCounter++,
-            message: 'Analysis Complete',
-          } satisfies ProgressAnnotation);
-
-          dataStream.writeMessageAnnotation({
-            type: 'chatSummary',
-            summary,
-            chatId: processedMessages.slice(-1)?.[0]?.id,
-          } as ContextAnnotation);
-
-          // Update context buffer
-          logger.debug('Updating Context Buffer');
-          dataStream.writeData({
-            type: 'progress',
-            label: 'context',
-            status: 'in-progress',
-            order: progressCounter++,
-            message: 'Determining Files to Read',
-          } satisfies ProgressAnnotation);
-
-          // Select context files
-          console.log(`Messages count: ${processedMessages.length}`);
-          filteredFiles = await selectContext({
-            messages: [...processedMessages],
-            env: serverEnv as any,
-            apiKeys,
-            files,
-            providerSettings,
-            promptId,
-            contextOptimization,
-            summary,
-            onFinish(resp) {
-              if (resp.usage) {
-                logger.debug('selectContext token usage', JSON.stringify(resp.usage));
-                cumulativeUsage.completionTokens += resp.usage.completionTokens || 0;
-                cumulativeUsage.promptTokens += resp.usage.promptTokens || 0;
-                cumulativeUsage.totalTokens += resp.usage.totalTokens || 0;
-              }
-            },
-          });
-
-          if (filteredFiles) {
-            logger.debug(`files in context : ${JSON.stringify(Object.keys(filteredFiles))}`);
+          if (processedMessages.length > 3) {
+            messageSliceId = processedMessages.length - 3;
           }
 
-          dataStream.writeMessageAnnotation({
-            type: 'codeContext',
-            files: Object.keys(filteredFiles).map((key) => {
-              let path = key;
+          if (filePaths.length > 0 && contextOptimization) {
+            logger.debug('Generating Chat Summary');
+            dataStream.writeData({
+              type: 'progress',
+              label: 'summary',
+              status: 'in-progress',
+              order: progressCounter++,
+              message: 'Analysing Request',
+            } satisfies ProgressAnnotation);
 
-              if (path.startsWith(WORK_DIR)) {
-                path = path.replace(WORK_DIR, '');
-              }
+            // Create a summary of the chat
+            console.log(`Messages count: ${processedMessages.length}`);
 
-              return path;
-            }),
-          } as ContextAnnotation);
-
-          dataStream.writeData({
-            type: 'progress',
-            label: 'context',
-            status: 'complete',
-            order: progressCounter++,
-            message: 'Code Files Selected',
-          } satisfies ProgressAnnotation);
-
-          // logger.debug('Code Files Selected');
-        }
-
-        const options: StreamingOptions = {
-          supabaseConnection: supabase,
-          toolChoice: 'auto',
-          tools: mcpService.toolsWithoutExecute,
-          maxSteps: maxLLMSteps,
-          onStepFinish: ({ toolCalls }) => {
-            // add tool call annotations for frontend processing
-            toolCalls.forEach((toolCall) => {
-              mcpService.processToolCall(toolCall, dataStream);
-            });
-          },
-          onFinish: async ({ text: content, finishReason, usage }) => {
-            logger.debug('usage', JSON.stringify(usage));
-
-            if (usage) {
-              cumulativeUsage.completionTokens += usage.completionTokens || 0;
-              cumulativeUsage.promptTokens += usage.promptTokens || 0;
-              cumulativeUsage.totalTokens += usage.totalTokens || 0;
-            }
-
-            if (finishReason !== 'length') {
-              dataStream.writeMessageAnnotation({
-                type: 'usage',
-                value: {
-                  completionTokens: cumulativeUsage.completionTokens,
-                  promptTokens: cumulativeUsage.promptTokens,
-                  totalTokens: cumulativeUsage.totalTokens,
-                },
-              });
-              dataStream.writeData({
-                type: 'progress',
-                label: 'response',
-                status: 'complete',
-                order: progressCounter++,
-                message: 'Response Generated',
-              } satisfies ProgressAnnotation);
-              await new Promise((resolve) => setTimeout(resolve, 0));
-
-              // stream.close();
-              return;
-            }
-
-            if (stream.switches >= MAX_RESPONSE_SEGMENTS) {
-              throw Error('Cannot continue message: Maximum segments reached');
-            }
-
-            const switchesLeft = MAX_RESPONSE_SEGMENTS - stream.switches;
-
-            logger.info(`Reached max token limit (${MAX_TOKENS}): Continuing message (${switchesLeft} switches left)`);
-
-            const lastUserMessage = processedMessages.filter((x) => x.role == 'user').slice(-1)[0];
-            const { model, provider } = extractPropertiesFromMessage(lastUserMessage);
-            processedMessages.push({ id: generateId(), role: 'assistant', content });
-            processedMessages.push({
-              id: generateId(),
-              role: 'user',
-              content: `[Model: ${model}]\n\n[Provider: ${provider}]\n\n${CONTINUE_PROMPT}`,
-            });
-
-            const result = await streamText({
+            summary = await createSummary({
               messages: [...processedMessages],
               env: serverEnv as any,
-              options,
+              apiKeys,
+              providerSettings,
+              promptId,
+              contextOptimization,
+              onFinish(resp) {
+                if (resp.usage) {
+                  logger.debug('createSummary token usage', JSON.stringify(resp.usage));
+                  cumulativeUsage.completionTokens += resp.usage.completionTokens || 0;
+                  cumulativeUsage.promptTokens += resp.usage.promptTokens || 0;
+                  cumulativeUsage.totalTokens += resp.usage.totalTokens || 0;
+                }
+              },
+            });
+            dataStream.writeData({
+              type: 'progress',
+              label: 'summary',
+              status: 'complete',
+              order: progressCounter++,
+              message: 'Analysis Complete',
+            } satisfies ProgressAnnotation);
+
+            dataStream.writeMessageAnnotation({
+              type: 'chatSummary',
+              summary,
+              chatId: processedMessages.slice(-1)?.[0]?.id,
+            } as ContextAnnotation);
+
+            // Update context buffer
+            logger.debug('Updating Context Buffer');
+            dataStream.writeData({
+              type: 'progress',
+              label: 'context',
+              status: 'in-progress',
+              order: progressCounter++,
+              message: 'Determining Files to Read',
+            } satisfies ProgressAnnotation);
+
+            // Select context files
+            console.log(`Messages count: ${processedMessages.length}`);
+            filteredFiles = await selectContext({
+              messages: [...processedMessages],
+              env: serverEnv as any,
               apiKeys,
               files,
               providerSettings,
               promptId,
               contextOptimization,
-              contextFiles: filteredFiles,
-              chatMode,
-              designScheme,
               summary,
-              messageSliceId,
+              onFinish(resp) {
+                if (resp.usage) {
+                  logger.debug('selectContext token usage', JSON.stringify(resp.usage));
+                  cumulativeUsage.completionTokens += resp.usage.completionTokens || 0;
+                  cumulativeUsage.promptTokens += resp.usage.promptTokens || 0;
+                  cumulativeUsage.totalTokens += resp.usage.totalTokens || 0;
+                }
+              },
             });
 
-            result.mergeIntoDataStream(dataStream);
+            if (filteredFiles) {
+              logger.debug(`files in context : ${JSON.stringify(Object.keys(filteredFiles))}`);
+            }
 
-            (async () => {
-              for await (const part of result.fullStream) {
-                if (part.type === 'error') {
-                  const error: any = part.error;
-                  logger.error(`${error}`);
+            dataStream.writeMessageAnnotation({
+              type: 'codeContext',
+              files: Object.keys(filteredFiles).map((key) => {
+                let path = key;
 
-                  return;
+                if (path.startsWith(WORK_DIR)) {
+                  path = path.replace(WORK_DIR, '');
                 }
+
+                return path;
+              }),
+            } as ContextAnnotation);
+
+            dataStream.writeData({
+              type: 'progress',
+              label: 'context',
+              status: 'complete',
+              order: progressCounter++,
+              message: 'Code Files Selected',
+            } satisfies ProgressAnnotation);
+
+            // logger.debug('Code Files Selected');
+          }
+
+          const options: StreamingOptions = {
+            supabaseConnection: supabase,
+            toolChoice: 'auto',
+            tools: mcpService.toolsWithoutExecute,
+            maxSteps: maxLLMSteps,
+            onStepFinish: ({ toolCalls }) => {
+              // add tool call annotations for frontend processing
+              toolCalls.forEach((toolCall) => {
+                mcpService.processToolCall(toolCall, dataStream);
+              });
+            },
+            onFinish: async ({ text: content, finishReason, usage }) => {
+              logger.debug('usage', JSON.stringify(usage));
+
+              if (usage) {
+                cumulativeUsage.completionTokens += usage.completionTokens || 0;
+                cumulativeUsage.promptTokens += usage.promptTokens || 0;
+                cumulativeUsage.totalTokens += usage.totalTokens || 0;
               }
-            })();
 
-            return;
-          },
-        };
+              if (finishReason !== 'length') {
+                dataStream.writeMessageAnnotation({
+                  type: 'usage',
+                  value: {
+                    completionTokens: cumulativeUsage.completionTokens,
+                    promptTokens: cumulativeUsage.promptTokens,
+                    totalTokens: cumulativeUsage.totalTokens,
+                  },
+                });
+                dataStream.writeData({
+                  type: 'progress',
+                  label: 'response',
+                  status: 'complete',
+                  order: progressCounter++,
+                  message: 'Response Generated',
+                } satisfies ProgressAnnotation);
+                await new Promise((resolve) => setTimeout(resolve, 0));
 
-        dataStream.writeData({
-          type: 'progress',
-          label: 'response',
-          status: 'in-progress',
-          order: progressCounter++,
-          message: 'Generating Response',
-        } satisfies ProgressAnnotation);
+                // stream.close();
+                return;
+              }
 
-        const result = await streamText({
-          messages: [...processedMessages],
-          env: serverEnv as any,
-          options,
-          apiKeys,
-          files,
-          providerSettings,
-          promptId,
-          contextOptimization,
-          contextFiles: filteredFiles,
-          chatMode,
-          designScheme,
-          summary,
-          messageSliceId,
-        });
+              if (stream.switches >= MAX_RESPONSE_SEGMENTS) {
+                throw Error('Cannot continue message: Maximum segments reached');
+              }
 
-        (async () => {
-          for await (const part of result.fullStream) {
-            if (part.type === 'error') {
-              const error: any = part.error;
-              logger.error(`${error}`);
+              const switchesLeft = MAX_RESPONSE_SEGMENTS - stream.switches;
+
+              logger.info(
+                `Reached max token limit (${MAX_TOKENS}): Continuing message (${switchesLeft} switches left)`,
+              );
+
+              const lastUserMessage = processedMessages.filter((x) => x.role == 'user').slice(-1)[0];
+              const { model, provider } = extractPropertiesFromMessage(lastUserMessage);
+              processedMessages.push({ id: generateId(), role: 'assistant', content });
+              processedMessages.push({
+                id: generateId(),
+                role: 'user',
+                content: `[Model: ${model}]\n\n[Provider: ${provider}]\n\n${CONTINUE_PROMPT}`,
+              });
+
+              const result = await streamText({
+                messages: [...processedMessages],
+                env: serverEnv as any,
+                options,
+                apiKeys,
+                files,
+                providerSettings,
+                promptId,
+                contextOptimization,
+                contextFiles: filteredFiles,
+                chatMode,
+                designScheme,
+                summary,
+                messageSliceId,
+              });
+
+              result.mergeIntoDataStream(dataStream);
+
+              (async () => {
+                for await (const part of result.fullStream) {
+                  if (part.type === 'error') {
+                    const error: any = part.error;
+                    logger.error(`${error}`);
+
+                    return;
+                  }
+                }
+              })();
 
               return;
+            },
+          };
+
+          dataStream.writeData({
+            type: 'progress',
+            label: 'response',
+            status: 'in-progress',
+            order: progressCounter++,
+            message: 'Generating Response',
+          } satisfies ProgressAnnotation);
+
+          logger.debug('About to call streamText with:', {
+            messagesCount: processedMessages.length,
+            hasServerEnv: !!serverEnv,
+            serverEnvKeys: Object.keys(serverEnv || {}).filter((k) => k.includes('API_KEY')),
+            apiKeysFromCookie: Object.keys(apiKeys || {}),
+            hasOptions: !!options,
+            hasFiles: !!files,
+            hasProviderSettings: !!providerSettings,
+            promptId,
+            contextOptimization,
+            hasFilteredFiles: !!filteredFiles,
+            chatMode,
+            hasDesignScheme: !!designScheme,
+            hasSummary: !!summary,
+            messageSliceId,
+          });
+
+          const result = await streamText({
+            messages: [...processedMessages],
+            env: serverEnv as any,
+            options,
+            apiKeys,
+            files,
+            providerSettings,
+            promptId,
+            contextOptimization,
+            contextFiles: filteredFiles,
+            chatMode,
+            designScheme,
+            summary,
+            messageSliceId,
+          });
+
+          logger.debug('streamText result created successfully:', {
+            hasResult: !!result,
+            hasFullStream: !!result?.fullStream,
+            hasMergeIntoDataStream: typeof result?.mergeIntoDataStream === 'function',
+          });
+
+          (async () => {
+            for await (const part of result.fullStream) {
+              if (part.type === 'error') {
+                const error: any = part.error;
+                logger.error(`${error}`);
+
+                return;
+              }
             }
-          }
-        })();
-        result.mergeIntoDataStream(dataStream);
+          })();
+          result.mergeIntoDataStream(dataStream);
+        } catch (executeError: any) {
+          logger.error('Error in DataStream execute function:', executeError);
+          logger.error('Execute error stack:', executeError?.stack);
+          logger.error('Execute error details:', {
+            message: executeError?.message,
+            name: executeError?.name,
+            provider: executeError?.provider,
+            statusCode: executeError?.statusCode,
+          });
+
+          // Re-throw with more context
+          throw new Error(`DataStream execution failed: ${executeError?.message || 'Unknown error'}`);
+        }
       },
       onError: (error: any) => `Custom error: ${error.message}`,
     }).pipeThrough(

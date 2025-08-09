@@ -4,7 +4,7 @@ import {
   createUniversalRoute,
   createUniversalResponse,
   getUniversalEnvironment,
-  type UniversalLoaderArgs
+  type UniversalLoaderArgs,
 } from '~/lib/utils/universal-remix';
 
 export const loader = createUniversalRoute(async ({ context, request }: UniversalLoaderArgs) => {

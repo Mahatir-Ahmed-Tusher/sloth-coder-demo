@@ -7,11 +7,7 @@ import { LLMManager } from '~/lib/modules/llm/manager';
 import type { ModelInfo } from '~/lib/modules/llm/types';
 import { getApiKeysFromCookie, getProviderSettingsFromCookie } from '~/lib/api/cookies';
 import { createScopedLogger } from '~/utils/logger';
-import {
-  createUniversalRoute,
-  getUniversalEnvironment,
-  type UniversalActionArgs
-} from '~/lib/utils/universal-remix';
+import { createUniversalRoute, getUniversalEnvironment, type UniversalActionArgs } from '~/lib/utils/universal-remix';
 
 export const action = createUniversalRoute(llmCallAction);
 

@@ -7,8 +7,7 @@ export async function loader({ context, request }: any) {
   try {
     // Log the runtime environment
     const runtime = typeof global !== 'undefined' ? 'node' : 'worker';
-    const platform = process.env.VERCEL ? 'vercel' :
-                    context?.cloudflare?.env ? 'cloudflare' : 'unknown';
+    const platform = process.env.VERCEL ? 'vercel' : context?.cloudflare?.env ? 'cloudflare' : 'unknown';
 
     // Test different ways to access environment variables
     const envTests = {
@@ -21,11 +20,11 @@ export async function loader({ context, request }: any) {
       contextCloudflare: {
         exists: !!context?.cloudflare,
         envExists: !!context?.cloudflare?.env,
-        keys: context?.cloudflare?.env ? Object.keys(context.cloudflare.env) : []
+        keys: context?.cloudflare?.env ? Object.keys(context.cloudflare.env) : [],
       },
       contextDirect: {
-        keys: context ? Object.keys(context) : []
-      }
+        keys: context ? Object.keys(context) : [],
+      },
     };
 
     const response = {
@@ -35,32 +34,31 @@ export async function loader({ context, request }: any) {
       platform,
       envTests,
       userAgent: request.headers.get('User-Agent'),
-      url: request.url
+      url: request.url,
     };
 
     return new Response(JSON.stringify(response, null, 2), {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
-        'Cache-Control': 'no-cache'
-      }
+        'Cache-Control': 'no-cache',
+      },
     });
-
   } catch (error: any) {
     // Always return JSON, never HTML error pages
     const errorResponse = {
       success: false,
       error: error.message,
       stack: error.stack,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
 
     return new Response(JSON.stringify(errorResponse, null, 2), {
       status: 500,
       headers: {
         'Content-Type': 'application/json',
-        'Cache-Control': 'no-cache'
-      }
+        'Cache-Control': 'no-cache',
+      },
     });
   }
 }

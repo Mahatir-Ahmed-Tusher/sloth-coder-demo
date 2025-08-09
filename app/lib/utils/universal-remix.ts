@@ -34,39 +34,36 @@ export function createUniversalResponse(
     status?: number;
     statusText?: string;
     headers?: Record<string, string>;
-  }
+  },
 ) {
   const headers = {
     'Content-Type': 'application/json',
     'Cache-Control': 'no-cache',
-    ...init?.headers
+    ...init?.headers,
   };
 
   return new Response(JSON.stringify(data), {
     status: init?.status || 200,
     statusText: init?.statusText,
-    headers
+    headers,
   });
 }
 
 /**
  * Universal error response handler that always returns JSON
  */
-export function createUniversalErrorResponse(
-  error: unknown,
-  context?: string
-) {
+export function createUniversalErrorResponse(error: unknown, context?: string) {
   const errorData = {
     error: true,
     message: error instanceof Error ? error.message : 'Unknown error',
     context: context || 'unknown',
     timestamp: new Date().toISOString(),
-    ...(error instanceof Error && { stack: error.stack })
+    ...(error instanceof Error && { stack: error.stack }),
   };
 
   return createUniversalResponse(errorData, {
     status: 500,
-    statusText: 'Internal Server Error'
+    statusText: 'Internal Server Error',
   });
 }
 
@@ -76,8 +73,10 @@ export function createUniversalErrorResponse(
 export function getUniversalEnvironment(context?: UniversalContext): Record<string, string> {
   const cloudflareEnv = context?.cloudflare?.env || {};
 
-  // Merge environments with proper precedence
-  // process.env takes priority for Node.js platforms (Vercel)
+  /*
+   * Merge environments with proper precedence
+   * process.env takes priority for Node.js platforms (Vercel)
+   */
   const mergedEnv = {
     ...cloudflareEnv,
     ...process.env,
@@ -99,7 +98,7 @@ export function getUniversalEnvironment(context?: UniversalContext): Record<stri
  * Universal route wrapper that handles errors consistently across platforms
  */
 export function createUniversalRoute<T = any>(
-  handler: (args: UniversalLoaderArgs | UniversalActionArgs) => Promise<Response | T>
+  handler: (args: UniversalLoaderArgs | UniversalActionArgs) => Promise<Response | T>,
 ) {
   return async (args: any): Promise<Response> => {
     try {
@@ -112,7 +111,6 @@ export function createUniversalRoute<T = any>(
 
       // Otherwise, wrap it in a universal response
       return createUniversalResponse(result);
-
     } catch (error) {
       console.error('Universal route error:', error);
       return createUniversalErrorResponse(error, 'route_handler');

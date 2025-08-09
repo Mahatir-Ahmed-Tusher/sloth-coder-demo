@@ -5,7 +5,7 @@ import {
   createUniversalRoute,
   createUniversalResponse,
   getUniversalEnvironment,
-  type UniversalLoaderArgs
+  type UniversalLoaderArgs,
 } from '~/lib/utils/universal-remix';
 
 const logger = createScopedLogger('api.check-env-key');
@@ -41,12 +41,9 @@ export const loader = createUniversalRoute(async ({ context, request }: Universa
    * 2. Server environment variables (Vercel: process.env, Cloudflare: context.cloudflare.env)
    * 3. LLMManager environment variables (from import.meta.env)
    */
-  const isSet = !!(
-    apiKeys?.[provider] ||
-    serverEnv[envVarName] ||
-    llmManager.env[envVarName]
-  );
+  const isSet = !!(apiKeys?.[provider] || serverEnv[envVarName] || llmManager.env[envVarName]);
 
   logger.debug(`Provider ${provider} API key check result: ${isSet}`);
+
   return createUniversalResponse({ isSet });
 });
