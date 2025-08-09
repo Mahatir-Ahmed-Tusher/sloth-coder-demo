@@ -220,11 +220,16 @@ export async function streamText(props: {
     throw new Error(`Failed to initialize LLM model: ${modelError.message}`);
   }
 
+  // Debug the prompt selection
+  const selectedPrompt = chatMode === 'build' ? systemPrompt : discussPrompt();
+  logger.info(`streamText: Using ${chatMode === 'build' ? 'BUILD/ARTIFACT' : 'DISCUSS/CONSULTATION'} prompt (chatMode: ${chatMode})`);
+  logger.debug(`System prompt length: ${selectedPrompt.length} characters`);
+
   // console.log(systemPrompt, processedMessages);
 
   return await _streamText({
     model: modelInstance,
-    system: chatMode === 'build' ? systemPrompt : discussPrompt(),
+    system: selectedPrompt,
     maxTokens: dynamicMaxTokens,
     messages: convertToCoreMessages(processedMessages as any),
     ...options,
