@@ -1,13 +1,8 @@
+import { json } from '@remix-run/cloudflare';
 import { LLMManager } from '~/lib/modules/llm/manager';
 import type { ModelInfo } from '~/lib/modules/llm/types';
 import type { ProviderInfo } from '~/types/model';
 import { getApiKeysFromCookie, getProviderSettingsFromCookie } from '~/lib/api/cookies';
-import {
-  createUniversalRoute,
-  createUniversalResponse,
-  getUniversalEnvironment,
-  type UniversalLoaderArgs,
-} from '~/lib/utils/universal-remix';
 
 interface ModelsResponse {
   modelList: ModelInfo[];
@@ -43,10 +38,20 @@ function getProviderInfo(llmManager: LLMManager) {
   return { providers: cachedProviders, defaultProvider: cachedDefaultProvider };
 }
 
-export const loader = createUniversalRoute(async ({ request, params, context }: UniversalLoaderArgs) => {
-  // Get merged server environment for cross-platform compatibility
-  const serverEnv = getUniversalEnvironment(context);
-  const llmManager = LLMManager.getInstance(serverEnv);
+export async function loader({
+  request,
+  params,
+  context,
+}: {
+  request: Request;
+  params: { provider?: string };
+  context: {
+    cloudflare?: {
+      env: Record<string, string>;
+    };
+  };
+}): Promise<Response> {
+  const llmManager = LLMManager.getInstance(context.cloudflare?.env);
 
   // Get client side maintained API keys and provider settings from cookies
   const cookieHeader = request.headers.get('Cookie');
@@ -57,7 +62,7 @@ export const loader = createUniversalRoute(async ({ request, params, context }: 
 
   let modelList: ModelInfo[] = [];
 
-  if (params?.provider) {
+  if (params.provider) {
     // Only update models for the specific provider
     const provider = llmManager.getProvider(params.provider);
 
@@ -65,7 +70,7 @@ export const loader = createUniversalRoute(async ({ request, params, context }: 
       modelList = await llmManager.getModelListFromProvider(provider, {
         apiKeys,
         providerSettings,
-        serverEnv: serverEnv as any,
+        serverEnv: context.cloudflare?.env,
       });
     }
   } else {
@@ -73,13 +78,13 @@ export const loader = createUniversalRoute(async ({ request, params, context }: 
     modelList = await llmManager.updateModelList({
       apiKeys,
       providerSettings,
-      serverEnv: serverEnv as any,
+      serverEnv: context.cloudflare?.env,
     });
   }
 
-  return createUniversalResponse({
+  return json<ModelsResponse>({
     modelList,
     providers,
     defaultProvider,
-  } as ModelsResponse);
-});
+  });
+}

@@ -40,7 +40,7 @@ export async function createSummary(props: {
   });
 
   const provider = PROVIDER_LIST().find((p: any) => p.name === currentProvider) || DEFAULT_PROVIDER();
-  const llmManager = LLMManager.getInstance(serverEnv as any);
+  const llmManager = LLMManager.getInstance(props.env as any);
   const staticModels = llmManager.getStaticModelListFromProvider(provider);
   let modelDetails = staticModels.find((m) => m.name === currentModel);
 

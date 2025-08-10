@@ -1,24 +1,23 @@
+import { type ActionFunctionArgs } from '@remix-run/cloudflare';
 import { streamText } from '~/lib/.server/llm/stream-text';
 import { stripIndents } from '~/utils/stripIndent';
 import type { ProviderInfo } from '~/types/model';
 import { getApiKeysFromCookie, getProviderSettingsFromCookie } from '~/lib/api/cookies';
 import { createScopedLogger } from '~/utils/logger';
-import { createUniversalRoute, getUniversalEnvironment, type UniversalActionArgs } from '~/lib/utils/universal-remix';
 
-export const action = createUniversalRoute(enhancerAction);
+export async function action(args: ActionFunctionArgs) {
+  return enhancerAction(args);
+}
 
 const logger = createScopedLogger('api.enhancher');
 
-async function enhancerAction({ context, request }: UniversalActionArgs) {
+async function enhancerAction({ context, request }: ActionFunctionArgs) {
   const { message, model, provider } = await request.json<{
     message: string;
     model: string;
     provider: ProviderInfo;
     apiKeys?: Record<string, string>;
   }>();
-
-  // Get merged server environment for cross-platform compatibility
-  const serverEnv = getUniversalEnvironment(context);
 
   const { name: providerName } = provider;
 
@@ -78,7 +77,7 @@ async function enhancerAction({ context, request }: UniversalActionArgs) {
           `,
         },
       ],
-      env: serverEnv as any,
+      env: context.cloudflare?.env as any,
       apiKeys,
       providerSettings,
       options: {

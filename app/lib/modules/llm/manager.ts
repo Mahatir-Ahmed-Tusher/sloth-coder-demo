@@ -19,24 +19,10 @@ export class LLMManager {
   static getInstance(env: Record<string, string> = {}): LLMManager {
     if (!LLMManager._instance) {
       LLMManager._instance = new LLMManager(env);
-    } else if (Object.keys(env).length > 0) {
-      // Update environment if new environment is provided and has values
-      LLMManager._instance.updateEnvironment(env);
     }
 
     return LLMManager._instance;
   }
-
-  /**
-   * Update the environment variables for the LLM manager
-   * This allows updating the environment after the singleton is created
-   */
-  updateEnvironment(newEnv: Record<string, string>) {
-    // Merge new environment with existing, giving priority to new values
-    Object.assign(this._env, newEnv);
-    logger.debug('Updated LLMManager environment variables');
-  }
-
   get env() {
     return this._env;
   }

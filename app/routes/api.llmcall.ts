@@ -1,3 +1,4 @@
+import { type ActionFunctionArgs } from '@remix-run/cloudflare';
 import { streamText } from '~/lib/.server/llm/stream-text';
 import type { IProviderSetting, ProviderInfo } from '~/types/model';
 import { generateText } from 'ai';
@@ -7,9 +8,10 @@ import { LLMManager } from '~/lib/modules/llm/manager';
 import type { ModelInfo } from '~/lib/modules/llm/types';
 import { getApiKeysFromCookie, getProviderSettingsFromCookie } from '~/lib/api/cookies';
 import { createScopedLogger } from '~/utils/logger';
-import { createUniversalRoute, getUniversalEnvironment, type UniversalActionArgs } from '~/lib/utils/universal-remix';
 
-export const action = createUniversalRoute(llmCallAction);
+export async function action(args: ActionFunctionArgs) {
+  return llmCallAction(args);
+}
 
 async function getModelList(options: {
   apiKeys?: Record<string, string>;
@@ -22,7 +24,7 @@ async function getModelList(options: {
 
 const logger = createScopedLogger('api.llmcall');
 
-async function llmCallAction({ context, request }: UniversalActionArgs) {
+async function llmCallAction({ context, request }: ActionFunctionArgs) {
   const { system, message, model, provider, streamOutput } = await request.json<{
     system: string;
     message: string;
@@ -30,9 +32,6 @@ async function llmCallAction({ context, request }: UniversalActionArgs) {
     provider: ProviderInfo;
     streamOutput?: boolean;
   }>();
-
-  // Get merged server environment for cross-platform compatibility
-  const serverEnv = getUniversalEnvironment(context);
 
   const { name: providerName } = provider;
 
@@ -67,7 +66,7 @@ async function llmCallAction({ context, request }: UniversalActionArgs) {
             content: `${message}`,
           },
         ],
-        env: serverEnv as any,
+        env: context.cloudflare?.env as any,
         apiKeys,
         providerSettings,
       });
@@ -95,7 +94,7 @@ async function llmCallAction({ context, request }: UniversalActionArgs) {
     }
   } else {
     try {
-      const models = await getModelList({ apiKeys, providerSettings, serverEnv: serverEnv as any });
+      const models = await getModelList({ apiKeys, providerSettings, serverEnv: context.cloudflare?.env as any });
       const modelDetails = models.find((m: ModelInfo) => m.name === model);
 
       if (!modelDetails) {
@@ -122,7 +121,7 @@ async function llmCallAction({ context, request }: UniversalActionArgs) {
         ],
         model: providerInfo.getModelInstance({
           model: modelDetails.name,
-          serverEnv: serverEnv as any,
+          serverEnv: context.cloudflare?.env as any,
           apiKeys,
           providerSettings,
         }),

@@ -147,12 +147,6 @@ export const ChatImpl = memo(
     const [animationScope, animate] = useAnimate();
     const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
     const [chatMode, setChatMode] = useState<'discuss' | 'build'>('build');
-
-    // Debug chat mode changes
-    useEffect(() => {
-      logger.debug(`Chat mode changed to: ${chatMode}`);
-    }, [chatMode]);
-
     const [selectedElement, setSelectedElement] = useState<ElementInfo | null>(null);
     const mcpSettings = useMCPStore((state) => state.settings);
 
@@ -172,7 +166,6 @@ export const ChatImpl = memo(
       addToolResult,
     } = useChat({
       api: '/api/chat',
-      streamProtocol: 'text', // Use text protocol for raw text streams
       body: {
         apiKeys,
         files,
@@ -453,24 +446,11 @@ export const ChatImpl = memo(
         setFakeLoading(true);
 
         if (autoSelectTemplate) {
-          let template = 'blank';
-          let title = '';
-
-          try {
-            const templateResult = await selectStarterTemplate({
-              message: finalMessageContent,
-              model,
-              provider,
-            });
-            template = templateResult.template;
-            title = templateResult.title;
-          } catch (templateError) {
-            console.error('Error selecting starter template:', templateError);
-
-            // Fallback to blank template if template selection fails
-            template = 'blank';
-            title = '';
-          }
+          const { template, title } = await selectStarterTemplate({
+            message: finalMessageContent,
+            model,
+            provider,
+          });
 
           if (template !== 'blank') {
             const temResp = await getTemplates(template, title).catch((e) => {

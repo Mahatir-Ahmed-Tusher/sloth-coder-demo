@@ -1,5 +1,6 @@
 import React from 'react';
 import { classNames } from '~/utils/classNames';
+import { Link } from '@remix-run/react';
 
 interface FooterProps {
   className?: string;
@@ -19,43 +20,43 @@ export function Footer({ className }: FooterProps) {
     {
       title: 'About',
       links: [
-        { name: 'Our Story', href: '#' },
-        { name: 'Team', href: '#' },
-        { name: 'Mission', href: '#' },
-        { name: 'Careers', href: '#' },
+        { name: 'Our Story', href: '/about' },
+        { name: 'Team', href: '/about' },
+        { name: 'Mission', href: '/about' },
+        { name: 'Careers', href: '/about' },
       ],
     },
     {
       title: 'APIs',
       links: [
-        { name: 'Documentation', href: '#' },
-        { name: 'SDK', href: '#' },
-        { name: 'Examples', href: '#' },
-        { name: 'Status', href: '#' },
+        { name: 'Documentation', href: '/apis' },
+        { name: 'Subscription Plans', href: '/apis' },
+        { name: 'Examples', href: '/apis' },
+        { name: 'Status', href: '/apis' },
       ],
     },
     {
       title: 'Terms',
       links: [
-        { name: 'Terms of Service', href: '#' },
-        { name: 'Acceptable Use', href: '#' },
-        { name: 'Service Level Agreement', href: '#' },
-        { name: 'Data Processing', href: '#' },
+        { name: 'Terms of Service', href: '/terms' },
+        { name: 'Acceptable Use', href: '/terms' },
+        { name: 'Service Level Agreement', href: '/terms' },
+        { name: 'Data Processing', href: '/terms' },
       ],
     },
     {
       title: 'Privacy',
       links: [
-        { name: 'Privacy Policy', href: '#' },
-        { name: 'Cookie Policy', href: '#' },
-        { name: 'Data Protection', href: '#' },
-        { name: 'GDPR', href: '#' },
+        { name: 'Privacy Policy', href: '/privacy' },
+        { name: 'Cookie Policy', href: '/privacy' },
+        { name: 'Data Protection', href: '/privacy' },
+        { name: 'GDPR', href: '/privacy' },
       ],
     },
     {
       title: 'Quick Links',
       links: [
-        { name: 'Home', href: '#' },
+        { name: 'Home', href: '/' },
         { name: 'Features', href: '#' },
         { name: 'Pricing', href: '#' },
         { name: 'Support', href: '#' },
@@ -73,10 +74,10 @@ export function Footer({ className }: FooterProps) {
     {
       title: 'Contact',
       links: [
-        { name: 'Support', href: '#' },
-        { name: 'Sales', href: '#' },
-        { name: 'Partnership', href: '#' },
-        { name: 'Feedback', href: '#' },
+        { name: 'Support', href: '/contact' },
+        { name: 'Sales', href: '/contact' },
+        { name: 'Partnership', href: '/contact' },
+        { name: 'Feedback', href: '/contact' },
       ],
     },
   ];
@@ -95,12 +96,12 @@ export function Footer({ className }: FooterProps) {
               <ul className="space-y-2">
                 {section.links.map((link) => (
                   <li key={link.name}>
-                    <a
-                      href={link.href}
+                    <Link
+                      to={link.href}
                       className="text-sm text-bolt-elements-textSecondary hover:text-bolt-elements-textPrimary transition-colors duration-200"
                     >
                       {link.name}
-                    </a>
+                    </Link>
                   </li>
                 ))}
               </ul>

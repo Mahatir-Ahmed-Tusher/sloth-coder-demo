@@ -194,42 +194,16 @@ export async function streamText(props: {
 
   logger.info(`Sending llm call to ${provider.name} with model ${modelDetails?.name}`);
 
-  // Debug LLM provider instantiation
-  logger.debug('LLM Provider Details:', {
-    providerName: provider.name,
-    modelName: modelDetails?.name,
-    hasServerEnv: !!serverEnv,
-    serverEnvApiKeys: Object.keys(serverEnv || {}).filter((k) => k.includes('API_KEY')),
-    cookieApiKeys: Object.keys(apiKeys || {}),
-    hasProviderSettings: !!providerSettings,
-    providerApiTokenKey: provider.config?.apiTokenKey,
-  });
+  // console.log(systemPrompt, processedMessages);
 
-  let modelInstance;
-
-  try {
-    modelInstance = provider.getModelInstance({
+  return await _streamText({
+    model: provider.getModelInstance({
       model: modelDetails?.name || '',
       serverEnv,
       apiKeys,
       providerSettings,
-    });
-    logger.debug('Model instance created successfully:', !!modelInstance);
-  } catch (modelError: any) {
-    logger.error('Failed to create model instance:', modelError);
-    throw new Error(`Failed to initialize LLM model: ${modelError.message}`);
-  }
-
-  // Debug the prompt selection
-  const selectedPrompt = chatMode === 'build' ? systemPrompt : discussPrompt();
-  logger.info(`streamText: Using ${chatMode === 'build' ? 'BUILD/ARTIFACT' : 'DISCUSS/CONSULTATION'} prompt (chatMode: ${chatMode})`);
-  logger.debug(`System prompt length: ${selectedPrompt.length} characters`);
-
-  // console.log(systemPrompt, processedMessages);
-
-  return await _streamText({
-    model: modelInstance,
-    system: selectedPrompt,
+    }),
+    system: chatMode === 'build' ? systemPrompt : discussPrompt(),
     maxTokens: dynamicMaxTokens,
     messages: convertToCoreMessages(processedMessages as any),
     ...options,

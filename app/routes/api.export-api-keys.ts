@@ -1,20 +1,14 @@
+import type { LoaderFunction } from '@remix-run/cloudflare';
 import { LLMManager } from '~/lib/modules/llm/manager';
 import { getApiKeysFromCookie } from '~/lib/api/cookies';
-import {
-  createUniversalRoute,
-  createUniversalResponse,
-  getUniversalEnvironment,
-  type UniversalLoaderArgs,
-} from '~/lib/utils/universal-remix';
 
-export const loader = createUniversalRoute(async ({ context, request }: UniversalLoaderArgs) => {
+export const loader: LoaderFunction = async ({ context, request }) => {
   // Get API keys from cookie
   const cookieHeader = request.headers.get('Cookie');
   const apiKeysFromCookie = getApiKeysFromCookie(cookieHeader);
 
-  // Get merged server environment for cross-platform compatibility
-  const serverEnv = getUniversalEnvironment(context);
-  const llmManager = LLMManager.getInstance(serverEnv);
+  // Initialize the LLM manager to access environment variables
+  const llmManager = LLMManager.getInstance(context?.cloudflare?.env as any);
 
   // Get all provider instances to find their API token keys
   const providers = llmManager.getAllProviders();
@@ -35,13 +29,16 @@ export const loader = createUniversalRoute(async ({ context, request }: Universa
       continue;
     }
 
-    // Check environment variables (serverEnv already has the right precedence)
-    const envValue = serverEnv[envVarName] || llmManager.env[envVarName];
+    // Check environment variables in order of precedence
+    const envValue =
+      (context?.cloudflare?.env as Record<string, any>)?.[envVarName] ||
+      process.env[envVarName] ||
+      llmManager.env[envVarName];
 
     if (envValue) {
       apiKeys[provider.name] = envValue;
     }
   }
 
-  return createUniversalResponse(apiKeys);
-});
+  return Response.json(apiKeys);
+};
